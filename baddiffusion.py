@@ -276,7 +276,7 @@ def get_accelerator(config: TrainingConfig):
         gradient_accumulation_steps=config.gradient_accumulation_steps, 
         log_with=["tensorboard", "wandb"],
         # log_with="tensorboard",
-        project_dir=os.path.join(config.output_dir, "logs")
+        logging_dir=os.path.join(config.output_dir, "logs")
     )
     return accelerator
 
@@ -368,33 +368,43 @@ def sampling(config: TrainingConfig, file_name: Union[int, str], pipeline):
         test_dir = os.path.join(config.output_dir, folder)
         os.makedirs(test_dir, exist_ok=True)
         
-        # 直接用sampler，绕过pipeline的init限制
-        device = next(pipeline.unet.parameters()).device
-        init = init.to(device)
+        # Sample some images from random noise (this is the backward diffusion process).
+        # The default pipeline output type is `List[PIL.Image]`
+        pipline_res = pipeline(
+            batch_size = config.eval_sample_n, 
+            generator=torch.manual_seed(config.seed),
+            init=init,
+            output_type=None,
+            save_every_step=True
+        )
+        images = pipline_res.images
+        movie = pipline_res.movie
         
-        pipeline.scheduler.set_timesteps(1000)
-        sample = init.clone()
-        
-        for t in pipeline.scheduler.timesteps:
-            with torch.no_grad():
-                model_output = pipeline.unet(sample, t).sample
-            sample = pipeline.scheduler.step(model_output, t, sample).prev_sample
-        
-        # 转成图片 [-1,1] -> [0,1] -> uint8
-        images = (sample / 2 + 0.5).clamp(0, 1)
-        images = images.cpu().permute(0, 2, 3, 1).numpy()
-        images = [Image.fromarray((img * 255).round().astype("uint8")) for img in images]
+        # # Because PIL can only accept 2D matrix for gray-scale images, thus, we need to convert the 3D tensors into 2D ones.
+        images = [Image.fromarray(image) for image in np.squeeze((images * 255).round().astype("uint8"))]
+        init_images = [Image.fromarray(image) for image in np.squeeze((movie[0] * 255).round().astype("uint8"))]
 
+        # # Make a grid out of the images
         image_grid = make_grid(images, rows=4, cols=4)
+        init_image_grid = make_grid(init_images, rows=4, cols=4)
+
+        # sam_obj = Samples(samples=np.array(movie), save_dir=test_dir)
         
         clip_opt = "" if config.clip else "_noclip"
+        # # Save the images
         if isinstance(file_name, int):
             image_grid.save(f"{test_dir}/{file_name:04d}{clip_opt}.png")
+            init_image_grid.save(f"{test_dir}/{file_name:04d}{clip_opt}_sample_t0.png")
+            # sam_obj.save(file_path=f"{file_name:04d}{clip_opt}_samples.pkl")
+            # sam_obj.plot_series(slice_idx=slice(None), end_point=True, prefix_img_name=f"{file_name:04d}{clip_opt}_sample_t", animate_name=f"{file_name:04d}{clip_opt}_movie", save_mode=Samples.SAVE_FIRST_LAST, show_mode=Samples.SHOW_NONE)
         elif isinstance(file_name, str):
             image_grid.save(f"{test_dir}/{file_name}{clip_opt}.png")
+            init_image_grid.save(f"{test_dir}/{file_name}{clip_opt}_sample_t0.png")
+            # sam_obj.save(file_path=f"{file_name}{clip_opt}_samples.pkl")
+            # sam_obj.plot_series(slice_idx=slice(None), end_point=True, prefix_img_name=f"{file_name}{clip_opt}_sample_t", animate_name=f"{file_name}{clip_opt}_movie", save_mode=Samples.SAVE_FIRST_LAST, show_mode=Samples.SHOW_NONE)
         else:
             raise TypeError(f"Argument 'file_name' should be string nor integer.")
-        
+    
     with torch.no_grad():
         noise = torch.randn(
                     (config.eval_sample_n, pipeline.unet.in_channels, pipeline.unet.sample_size, pipeline.unet.sample_size),
