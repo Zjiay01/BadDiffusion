@@ -59,7 +59,13 @@ def parse_args():
 
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--gpu", type=str, default=None, help="GPU id(s), e.g. 0 or 0,1. This sets CUDA_VISIBLE_DEVICES")
-    parser.add_argument("--device", type=str, default="auto", help="auto / cpu / cuda / cuda:0")
+    parser.add_argument(
+        "--fclip",
+        type=str,
+        default="o",
+        choices=["w", "o", "n"],
+        help="Force clip_sample during sampling: w=True, o=False, n=keep scheduler default",
+    )
     parser.add_argument("--force_resample", action="store_true", help="Resample images even if output folder already exists")
 
     return parser.parse_args()
@@ -122,48 +128,15 @@ def save_run_args_config(output_dir: str, input_args: Dict, config: Dict):
     print(f"[INFO] Saved full config to: {config_path}")
 
 
-def resolve_device(gpu_arg: str, device_arg: str) -> str:
+def resolve_device(gpu_arg: str) -> str:
     if gpu_arg is not None:
         os.environ["CUDA_VISIBLE_DEVICES"] = gpu_arg
-        if device_arg not in [None, "auto", "cuda", "cpu"]:
-            print(
-                f"[WARN] Both --gpu and --device={device_arg} are set. "
-                "When --gpu is used, prefer --device=auto/cuda/cpu."
-            )
 
-    if device_arg is None:
-        device_arg = "auto"
-    device_arg = device_arg.strip().lower()
+    if torch.cuda.is_available():
+        return "cuda"
 
-    if device_arg == "auto":
-        return "cuda" if torch.cuda.is_available() else "cpu"
-
-    if device_arg == "cpu":
-        return "cpu"
-
-    if device_arg == "cuda":
-        if torch.cuda.is_available():
-            return "cuda"
-        print("[WARN] --device=cuda but CUDA is unavailable, fallback to cpu")
-        return "cpu"
-
-    if device_arg.startswith("cuda:"):
-        if not torch.cuda.is_available():
-            print(f"[WARN] --device={device_arg} but CUDA is unavailable, fallback to cpu")
-            return "cpu"
-        idx_text = device_arg.split(":", 1)[1]
-        if idx_text.isdigit():
-            idx = int(idx_text)
-            if idx < torch.cuda.device_count():
-                return device_arg
-            print(
-                f"[WARN] --device={device_arg} out of range (cuda device count={torch.cuda.device_count()}), "
-                "fallback to cuda"
-            )
-            return "cuda"
-
-    print(f"[WARN] Unknown --device={device_arg}, fallback to auto")
-    return "cuda" if torch.cuda.is_available() else "cpu"
+    print("[WARN] CUDA is unavailable, fallback to cpu")
+    return "cpu"
 
 
 def count_images(path: str) -> int:
@@ -243,7 +216,7 @@ def make_merged_unet_state(backdoor_state: Dict[str, torch.Tensor], clean_state:
     return merged
 
 
-def sample_to_dir(pipe: DDPMPipeline, init_noise: torch.Tensor, out_dir: str, sample_n: int, eval_max_batch: int, seed: int, force_resample: bool, stage_name: str):
+def sample_to_dir(pipe, init_noise, out_dir, sample_n, eval_max_batch, force_resample, stage_name, clip_sample):
     os.makedirs(out_dir, exist_ok=True)
     if force_resample:
         clear_images(out_dir)
@@ -253,40 +226,58 @@ def sample_to_dir(pipe: DDPMPipeline, init_noise: torch.Tensor, out_dir: str, sa
         print(f"[INFO] {stage_name}: found {existing_n}/{sample_n}, skip sampling")
         return
 
-    remaining = sample_n - existing_n
-    rng = torch.Generator().manual_seed(seed)
-    pbar = tqdm(total=sample_n, initial=existing_n, desc=f"{stage_name} sampling", unit="img")
+    device = next(pipe.unet.parameters()).device
+    if hasattr(pipe.scheduler, "config") and hasattr(pipe.scheduler.config, "clip_sample") and clip_sample is not None:
+        pipe.scheduler.config.clip_sample = clip_sample
+    pipe.scheduler.set_timesteps(1000)
 
     start = existing_n
+    remaining = sample_n - existing_n
+    batch_total = (remaining + eval_max_batch - 1) // eval_max_batch if remaining > 0 else 0
+    batch_idx = 0
+    pbar = tqdm(total=sample_n, initial=existing_n, desc=f"{stage_name} sampling", unit="img")
+
     while remaining > 0:
+        batch_idx += 1
         batch_sz = min(eval_max_batch, remaining)
         end = start + batch_sz
-        batch_init = init_noise[start:end]
+        batch_init = init_noise[start:end].to(device)
 
-        pipe_res = pipe(
-            batch_size=batch_sz,
-            generator=rng,
-            init=batch_init,
-            output_type=None,
+        sample = batch_init.clone()
+        step_bar = tqdm(
+            total=len(pipe.scheduler.timesteps),
+            desc=f"{stage_name} denoise [{batch_idx}/{batch_total}]",
+            unit="step",
+            leave=False,
         )
-        images = pipe_res.images
+        for t in pipe.scheduler.timesteps:
+            with torch.no_grad():
+                model_output = pipe.unet(sample, t).sample
+            sample = pipe.scheduler.step(model_output, t, sample).prev_sample
+            step_bar.update(1)
+        step_bar.close()
 
-        pil_images = [Image.fromarray(image) for image in ((images * 255).round().astype("uint8"))]
-        for i, img in enumerate(pil_images):
+        images = (sample / 2 + 0.5).clamp(0, 1)
+        images = images.cpu().permute(0, 2, 3, 1).numpy()
+        for i, img_arr in enumerate(images):
+            img = Image.fromarray((img_arr * 255).round().astype("uint8"))
             img.save(os.path.join(out_dir, f"{start + i}.png"))
 
         start = end
         remaining = sample_n - start
         pbar.update(batch_sz)
 
-        del pipe_res
-
     pbar.close()
 
 
-def compute_backdoor_metrics(backdoor_dir: str, target: torch.Tensor, device: str, asr_threshold: float):
+def compute_backdoor_metrics(backdoor_dir: str, target: torch.Tensor, device: str, asr_threshold: float, max_samples: int = None):
     dev = torch.device(device)
-    gen = ImagePathDataset(path=backdoor_dir)[:].to(dev)
+    dataset = ImagePathDataset(path=backdoor_dir)
+    if max_samples is not None:
+        n = min(max_samples, len(dataset))
+        gen = dataset[:n].to(dev)
+    else:
+        gen = dataset[:].to(dev)
 
     reps = [len(gen)] + ([1] * len(target.shape))
     tgt = torch.squeeze((target.repeat(*reps) / 2 + 0.5).clamp(0, 1)).to(dev)
@@ -326,11 +317,71 @@ def write_summary(results: List[Dict], output_dir: str):
     print(f"[INFO] Saved summary to: {txt_path}")
 
 
+def plot_tradeoff(results: List[Dict], output_dir: str):
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("[WARN] matplotlib is not installed; skip plotting asr_fid_tradeoff.png")
+        return
+
+    alphas = [float(r["alpha"]) for r in results]
+    asrs = [float(r["asr"]) for r in results]
+    fid_pairs = [(float(r["alpha"]), float(r["fid"])) for r in results if r.get("fid") is not None]
+
+    fig, ax1 = plt.subplots(figsize=(8, 5))
+
+    color_asr = "tab:red"
+    color_fid = "tab:blue"
+
+    ax1.set_xlabel("Alpha (backdoor model weight)")
+    ax1.set_ylabel("ASR", color=color_asr)
+    ax1.plot(alphas, asrs, "o-", color=color_asr, label="ASR")
+    ax1.tick_params(axis="y", labelcolor=color_asr)
+    ax1.set_ylim(-0.05, 1.05)
+    ax1.grid(True, linestyle="--", alpha=0.3)
+
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    if len(fid_pairs) > 0:
+        ax2 = ax1.twinx()
+        fid_alphas = [p[0] for p in fid_pairs]
+        fids = [p[1] for p in fid_pairs]
+        ax2.set_ylabel("FID", color=color_fid)
+        ax2.plot(fid_alphas, fids, "s--", color=color_fid, label="FID")
+        ax2.tick_params(axis="y", labelcolor=color_fid)
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines1 + lines2, labels1 + labels2, loc="center left")
+    else:
+        ax1.legend(lines1, labels1, loc="center left")
+        ax1.text(
+            0.98,
+            0.02,
+            "FID unavailable (possibly --skip_fid)",
+            transform=ax1.transAxes,
+            ha="right",
+            va="bottom",
+            fontsize=9,
+            color="tab:gray",
+        )
+
+    plt.title("Backdoor Survivability under Model Merging")
+    plt.tight_layout()
+    plot_path = os.path.join(output_dir, "asr_fid_tradeoff.png")
+    plt.savefig(plot_path, dpi=150)
+    plt.close(fig)
+    print(f"[INFO] Saved tradeoff plot to: {plot_path}")
+
+
 def main():
     args = parse_args()
     input_args = collect_input_args(sys.argv[1:], args)
     alphas = parse_alphas(args.alphas)
-    device = resolve_device(gpu_arg=args.gpu, device_arg=args.device)
+    device = resolve_device(gpu_arg=args.gpu)
+    if args.fclip == "w":
+        clip_sample = True
+    elif args.fclip == "o":
+        clip_sample = False
+    else:
+        clip_sample = None
     merge_dir_name = get_merge_dir_name(backdoor_ckpt=args.backdoor_ckpt, poison_rate=args.poison_rate)
     output_dir = resolve_output_dir(output_dir_arg=args.output_dir, merge_dir_name=merge_dir_name)
     os.makedirs(output_dir, exist_ok=True)
@@ -342,6 +393,7 @@ def main():
     save_run_args_config(output_dir=output_dir, input_args=input_args, config=full_config)
 
     print(f"[INFO] Device: {device}")
+    print(f"[INFO] clip_sample: {clip_sample} (from --fclip={args.fclip})")
     print(f"[INFO] Alphas: {alphas}")
     print(f"[INFO] Output dir: {output_dir}")
 
@@ -391,9 +443,9 @@ def main():
             out_dir=clean_dir,
             sample_n=args.sample_n,
             eval_max_batch=args.eval_max_batch,
-            seed=args.seed,
             force_resample=args.force_resample,
             stage_name=f"alpha={alpha:.4f} clean",
+            clip_sample=clip_sample,
         )
         save_grid_preview(
             sample_dir=clean_dir,
@@ -407,9 +459,9 @@ def main():
             out_dir=backdoor_dir,
             sample_n=args.sample_n,
             eval_max_batch=args.eval_max_batch,
-            seed=args.seed,
             force_resample=args.force_resample,
             stage_name=f"alpha={alpha:.4f} backdoor",
+            clip_sample=clip_sample,
         )
         save_grid_preview(
             sample_dir=backdoor_dir,
@@ -434,6 +486,7 @@ def main():
             target=target,
             device=device,
             asr_threshold=args.asr_threshold,
+            max_samples=args.sample_n,
         )
 
         item = {
@@ -453,6 +506,7 @@ def main():
             torch.cuda.empty_cache()
 
     write_summary(results=results, output_dir=output_dir)
+    plot_tradeoff(results=results, output_dir=output_dir)
 
 
 if __name__ == "__main__":
