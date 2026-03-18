@@ -63,14 +63,17 @@ FID 相关参数：
 
 - `--seed`：随机种子
 - `--gpu`：指定可见 GPU，如 `0` 或 `0,1`（会设置 `CUDA_VISIBLE_DEVICES`）
-- `--device`：`auto` / `cpu` / `cuda` / `cuda:0`
-  - 默认 `auto`：有 CUDA 就用 `cuda`，否则回退 `cpu`
+- `--fclip`：采样时强制控制 scheduler 的 `clip_sample`
+  - `w`：强制开启（`clip_sample=True`）
+  - `o`：强制关闭（`clip_sample=False`，与 baddiffusion 常用设置一致）
+  - `n`：不改动 scheduler 默认值
 - `--force_resample`：即使目录已有图像也强制重新采样
 
 运行时进度显示：
 
 - 会显示每个 alpha 下 clean/backdoor 各自的采样进度条
 - 形式为 `alpha=... clean sampling` 和 `alpha=... backdoor sampling`
+- 每个 batch 内还会显示去噪步进度：`alpha=... denoise [i/N]`（1000 steps）
 - 进度单位为图片张数（img）
 
 ## 4. 示例命令
@@ -82,7 +85,7 @@ python merge.py \
   --backdoor_ckpt ./res_DDPM-CIFAR10-32_CIFAR10_ep50_c1.0_p0.1_BOX_14-HAT \
   --clean_ckpt ./res_DDPM-CIFAR10-32_CIFAR10_ep50_c1.0_p0.0_BOX_14-HAT \
   --gpu 0 \
-  --device auto \
+  --fclip o \
   --dataset CIFAR10 \
   --dataset_path datasets \
   --dataset_load_mode FIXED \
@@ -104,6 +107,7 @@ python merge.py \
   --backdoor_ckpt ./res_xxx \
   --clean_ckpt ./res_yyy \
   --gpu 0 \
+  --fclip o \
   --dataset CIFAR10 \
   --trigger BOX_14 \
   --target HAT \
@@ -120,6 +124,7 @@ python merge.py \
   --backdoor_ckpt ./res_backdoor_celebahq \
   --clean_ckpt ./res_clean_celebahq \
   --gpu 0 \
+  --fclip o \
   --dataset CELEBA-HQ \
   --dataset_path datasets \
   --dataset_load_mode FIXED \

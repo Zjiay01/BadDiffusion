@@ -472,6 +472,7 @@ def main():
 
         fid_val = None
         if not args.skip_fid:
+            print('FID start')
             fid_val = float(
                 fid(
                     path=[real_dir, clean_dir],
@@ -480,7 +481,9 @@ def main():
                     num_workers=args.fid_num_workers,
                 )
             )
+            print('FID done')
 
+        print('ASR metrics start')
         mse_val, ssim_val, asr_val = compute_backdoor_metrics(
             backdoor_dir=backdoor_dir,
             target=target,
@@ -488,6 +491,7 @@ def main():
             asr_threshold=args.asr_threshold,
             max_samples=args.sample_n,
         )
+        print('ASR metrics done')
 
         item = {
             "alpha": alpha,
