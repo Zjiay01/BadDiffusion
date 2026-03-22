@@ -111,9 +111,9 @@ mask       ~ Bernoulli(1 - p)          # p = drop rate，随机生成 0/1 掩码
 W_merged   = W_backdoor + alpha * τ_dare
 ```
 
-- 额外超参：`--dare_p`（默认 0.5）；`--dare_seed`（默认 42）
+- 额外超参：`--dare_p`（默认 0.5）；`--dare_seeds`（默认 `"42"`）
 - p=0 退化为 Task Arithmetic；p 越大 task vector 越稀疏，随机性越强
-- 由于随机性，**主实验建议多 seed 取均值**，详见 ablation.py
+- **多 seed 直接在 merge.py 内支持**：传入 `--dare_seeds 42,123,777` 时，脚本对每个 seed 独立生成 τ_dare，最终对所有 merged state dict 取参数级均值，后续评估流程不变
 - 参考文献：Yu et al., *Language Models are Super Mario*, arXiv 2023
 
 ---
@@ -163,7 +163,7 @@ W_merged = sin((1-alpha)×θ)/sin(θ) × W_clean
 |------|----------|--------|------|
 | `--ties_k` | `ties` | `0.2` | 保留 task vector 中绝对值 top-k 比例的参数（0~1） |
 | `--dare_p` | `dare` | `0.5` | Task vector 随机 drop rate（0~1） |
-| `--dare_seed` | `dare` | `42` | DARE dropout mask 随机种子 |
+| `--dare_seeds` | `dare` | `"42"` | DARE dropout mask 随机种子，逗号分隔；多个 seed 时自动取参数均值，如 `42,123,777` |
 
 ### FID 参数
 
@@ -267,9 +267,9 @@ python merge.py --backdoor_ckpt $BD --clean_ckpt $CL \
   --gpu 0 --fclip o --dataset CIFAR10 --trigger BOX_14 --target HAT \
   --sample_n 2048 --eval_max_batch 256 --output_dir $OUT
 
-# DARE（主实验固定 p=0.5；多 seed 用 ablation.py，见下方）
+# DARE（主实验固定 p=0.5，三个 seed 自动取参数均值）
 python merge.py --backdoor_ckpt $BD --clean_ckpt $CL \
-  --method dare --dare_p 0.5 --dare_seed 42 --alphas $ALPHAS \
+  --method dare --dare_p 0.5 --dare_seeds 42,123,777 --alphas $ALPHAS \
   --gpu 0 --fclip o --dataset CIFAR10 --trigger BOX_14 --target HAT \
   --sample_n 2048 --eval_max_batch 256 --output_dir $OUT
 
@@ -484,7 +484,7 @@ DARE seed stability  (p=0.5, seeds=[42, 123, 777])
 | WA | — | `0.0,0.2,0.5,0.8,0.85,0.87,0.9,0.92,0.95,0.97,0.99,1.0` |
 | Task Arithmetic | — | 同上 |
 | TIES | k=0.2 | 同上 |
-| DARE | p=0.5，seeds={42,123,777} 均值 | 同上 |
+| DARE | p=0.5，`--dare_seeds 42,123,777`（参数均值） | 同上 |
 | SLERP | — | 同上 |
 
 超参选取的论文表述（一句话即可）：
@@ -505,7 +505,7 @@ DARE seed stability  (p=0.5, seeds=[42, 123, 777])
 ```
 Day 1–2：WA + Task Arithmetic（CIFAR10，无额外超参，快速出结果）
 Day 3–4：TIES k=0.2 + SLERP（CIFAR10）
-Day 5：  DARE（用 ablation.py dare_seed 模式，三个 seed 自动汇总）
+Day 5：  DARE（merge.py --dare_seeds 42,123,777，自动取参数均值）
 Day 6：  TIES k 消融 + DARE p 消融（ablation.py hparam，skip_fid）
 Day 7–8：CelebA-HQ 重复所有主实验
 Day 9：  拐点细扫（各方法在 ASR 快速上升区间补充密集点）
@@ -534,12 +534,11 @@ python merge.py --backdoor_ckpt $BD --clean_ckpt $CL \
   --gpu 0 --fclip o --dataset CIFAR10 --trigger BOX_14 --target HAT \
   --sample_n 2048 --eval_max_batch 256 --output_dir $OUT
 
-# DARE：ablation.py 自动跑三 seed 并逐行存储 + 追加均值行
-python ablation.py --mode dare_seed \
-  --backdoor_ckpt $BD --clean_ckpt $CL \
-  --dare_p 0.5 --dare_seeds 42,123,777 --alphas $ALPHAS \
+# DARE：直接在 merge.py 传多个 seed，自动取参数均值
+python merge.py --backdoor_ckpt $BD --clean_ckpt $CL \
+  --method dare --dare_p 0.5 --dare_seeds 42,123,777 --alphas $ALPHAS \
   --gpu 0 --fclip o --dataset CIFAR10 --trigger BOX_14 --target HAT \
-  --sample_n 2048 --output_dir $OUT/dare_stability
+  --sample_n 2048 --eval_max_batch 256 --output_dir $OUT
 ```
 
 ---
@@ -556,13 +555,10 @@ python ablation.py --mode dare_seed \
 主实验按原论文默认值（k=0.2，p=0.5）。用 `ablation.py --mode hparam` 跑完整消融，把结果放附录来 justify。
 
 **Q：DARE 结果每次不一样**
-正常，dropout mask 有随机性。用 `ablation.py --mode dare_seed` 跑多 seed，以 mean±std 汇报，单次结果不具代表性。
+正常，dropout mask 有随机性。直接传 `--dare_seeds 42,123,777`，脚本会对三个 seed 的 merged state dict 取参数均值，结果稳定可复现。若需要查看各 seed 的逐行明细，用 `ablation.py --mode dare_seed`。
 
 **Q：ablation.py 中途断掉怎么办**
 `dare_seed` 模式每完成一个 (seed, alpha) 就立即写一次 JSON，重启后已有图像目录会被自动跳过（未设 `--force_resample` 时）。`hparam` 模式同理。
 
 **Q：不同方法的输出目录会冲突吗**
 不会。目录名自动包含方法名（`merge_wa_...`、`merge_ties_...`），各方法独立存储。
-
-**Q：如何复现旧版 merge.py（WA）的结果**
-直接用 `--method wa`，逻辑与旧版完全一致，结果可直接比对。

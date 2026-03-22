@@ -76,10 +76,14 @@ def parse_args():
         help="DARE: drop rate for delta parameters (0=keep all, 0.9=drop 90%%). Default 0.5.",
     )
     parser.add_argument(
-        "--dare_seed",
-        type=int,
-        default=42,
-        help="DARE: random seed for the dropout mask.",
+        "--dare_seeds",
+        type=str,
+        default="42",
+        help=(
+            "DARE: comma-separated seed list for the dropout mask. "
+            "Single seed (e.g. 42) -> one merge. "
+            "Multiple seeds (e.g. 42,123,777) -> run once per seed and average the merged weights."
+        ),
     )
 
     parser.add_argument(
@@ -400,7 +404,23 @@ def dispatch_merge(method: str, backdoor_state, clean_state, alpha, args) -> Dic
     elif method == "ties":
         return make_merged_unet_state_ties(backdoor_state, clean_state, alpha, k=args.ties_k)
     elif method == "dare":
-        return make_merged_unet_state_dare(backdoor_state, clean_state, alpha, p=args.dare_p, seed=args.dare_seed)
+        seeds = [int(s.strip()) for s in args.dare_seeds.split(",") if s.strip()]
+        if len(seeds) == 1:
+            return make_merged_unet_state_dare(backdoor_state, clean_state, alpha, p=args.dare_p, seed=seeds[0])
+        # Multi-seed: average the merged state dicts across seeds
+        float_keys = [k for k, v in backdoor_state.items() if torch.is_floating_point(v)]
+        accum = {k: torch.zeros_like(backdoor_state[k].float()) for k in float_keys}
+        for seed in seeds:
+            s = make_merged_unet_state_dare(backdoor_state, clean_state, alpha, p=args.dare_p, seed=seed)
+            for k in float_keys:
+                accum[k] += s[k].float()
+        merged = {}
+        for k in backdoor_state:
+            if k in float_keys:
+                merged[k] = (accum[k] / len(seeds)).to(backdoor_state[k].dtype)
+            else:
+                merged[k] = backdoor_state[k]
+        return merged
     elif method == "slerp":
         return make_merged_unet_state_slerp(backdoor_state, clean_state, alpha)
     else:
@@ -635,7 +655,10 @@ def main():
     if args.method == "ties":
         print(f"[INFO] TIES k (keep fraction): {args.ties_k}")
     if args.method == "dare":
-        print(f"[INFO] DARE p (drop rate):     {args.dare_p}  seed={args.dare_seed}")
+        seeds = [s.strip() for s in args.dare_seeds.split(",") if s.strip()]
+        seed_str = args.dare_seeds if len(seeds) > 1 else seeds[0]
+        avg_note = f"  (averaging {len(seeds)} seeds)" if len(seeds) > 1 else ""
+        print(f"[INFO] DARE p (drop rate):     {args.dare_p}  seeds={seed_str}{avg_note}")
 
     dsl = (
         DatasetLoader(root=args.dataset_path, name=args.dataset, batch_size=args.eval_max_batch)
