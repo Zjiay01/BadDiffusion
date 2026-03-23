@@ -74,13 +74,13 @@ W_merged = (1 - alpha) * W_clean + alpha * W_backdoor
 
 ```
 τ        = W_clean - W_backdoor        # task vector（朝干净方向）
-W_merged = W_backdoor + alpha * τ
-         = (1-alpha) * W_backdoor + alpha * W_clean
+W_merged = W_backdoor + (1-alpha) * τ
+         = alpha * W_backdoor + (1-alpha) * W_clean
 ```
 
 - 以后门模型为 pretrained，干净模型为 finetuned，对 task vector 做 negation 来抑制后门
 - 数学上与 WA 等价，但提供了 task vector 视角的解释
-- alpha=0：纯后门；alpha=1：后门完全被 τ 覆盖
+- alpha=1：纯后门；alpha=0：后门完全被 τ 覆盖
 - 无额外超参
 - 参考文献：Ilharco et al., *Editing Models with Task Arithmetic*, ICLR 2023
 
@@ -93,11 +93,12 @@ W_merged = W_backdoor + alpha * τ
 
 Step 1 – Trim:   保留 |τ| 中绝对值最大的 top-k% 参数，其余置零 → τ_trimmed
 Step 2 – Elect:  单向量时符号由 τ_trimmed 直接决定（无冲突）
-Step 3 – Merge:  W_merged = W_backdoor + alpha * τ_trimmed
+Step 3 – Merge:  W_merged = W_backdoor + (1-alpha) * τ_trimmed
 ```
 
 - 额外超参：`--ties_k`（默认 0.2，即保留幅度最大的 20% 参数）
 - k=1.0 退化为 Task Arithmetic；k 越小后门抑制越激进
+- alpha=1：纯后门；alpha=0：后门完全被 τ 覆盖
 - 参考文献：Yadav et al., *TIES-Merging*, NeurIPS 2023
 
 ---
@@ -108,12 +109,13 @@ Step 3 – Merge:  W_merged = W_backdoor + alpha * τ_trimmed
 τ          = W_clean - W_backdoor
 mask       ~ Bernoulli(1 - p)          # p = drop rate，随机生成 0/1 掩码
 τ_dare     = τ * mask / (1 - p)        # 随机稀疏化后 rescale 补偿期望幅度
-W_merged   = W_backdoor + alpha * τ_dare
+W_merged   = W_backdoor + (1-alpha) * τ_dare
 ```
 
 - 额外超参：`--dare_p`（默认 0.5）；`--dare_seeds`（默认 `"42"`）
 - p=0 退化为 Task Arithmetic；p 越大 task vector 越稀疏，随机性越强
 - **多 seed 直接在 merge.py 内支持**：传入 `--dare_seeds 42,123,777` 时，脚本对每个 seed 独立生成 τ_dare，最终对所有 merged state dict 取参数级均值，后续评估流程不变
+- alpha=1：纯后门；alpha=0：后门完全被 τ 覆盖
 - 参考文献：Yu et al., *Language Models are Super Mario*, arXiv 2023
 
 ---

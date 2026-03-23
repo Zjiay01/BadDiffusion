@@ -216,11 +216,11 @@ def make_merged_unet_state_task_arithmetic(
         τ = W_clean - W_backdoor   (direction that removes the backdoor)
 
     Merged model:
-        W = W_backdoor + alpha * τ
-          = W_backdoor + alpha * (W_clean - W_backdoor)
-          = (1-alpha)*W_backdoor + alpha*W_clean
+        W = W_backdoor + (1-alpha) * τ
+          = W_backdoor + (1-alpha) * (W_clean - W_backdoor)
+          = alpha*W_backdoor + (1-alpha)*W_clean
 
-    alpha=0 → pure backdoor; alpha=1 → pure clean (backdoor fully negated).
+    alpha=1 → pure backdoor; alpha=0 → pure clean (backdoor fully negated).
 
     This is mathematically equivalent to WA with roles swapped, but the
     framing is different: we are *adding* the clean task-vector to the
@@ -233,7 +233,7 @@ def make_merged_unet_state_task_arithmetic(
             merged[k] = bd
             continue
         tau = cl.float() - bd.float()          # task vector (toward clean)
-        merged[k] = (bd.float() + alpha * tau).to(bd.dtype)
+        merged[k] = (bd.float() + (1 - alpha) * tau).to(bd.dtype)
     return merged
 
 
@@ -254,9 +254,9 @@ def make_merged_unet_state_ties(
     -----------
     1. Trim  – zero out parameters in τ that are NOT in the top-k% by |τ|
     2. Elect – no sign conflict with a single vector, so sign = sign(τ_trimmed)
-    3. Merge – W_merged = W_backdoor + alpha * τ_trimmed
+    3. Merge – W_merged = W_backdoor + (1-alpha) * τ_trimmed
 
-    alpha=0 → pure backdoor, alpha=1 → τ fully applied.
+    alpha=1 → pure backdoor, alpha=0 → τ fully applied.
     """
     float_keys = _float_keys(backdoor_state)
     # Compute task vector
@@ -286,7 +286,7 @@ def make_merged_unet_state_ties(
             numel *= s
         tau_k = tau_trimmed[offset: offset + numel].reshape(shape)
         offset += numel
-        merged[kk] = (backdoor_state[kk].float() + alpha * tau_k).to(backdoor_state[kk].dtype)
+        merged[kk] = (backdoor_state[kk].float() + (1 - alpha) * tau_k).to(backdoor_state[kk].dtype)
 
     # Copy non-float keys unchanged
     for kk in backdoor_state:
@@ -309,9 +309,9 @@ def make_merged_unet_state_dare(
     Task vector: τ = W_clean - W_backdoor
     1. Randomly drop p fraction of τ parameters (set to zero)
     2. Rescale surviving parameters by 1/(1-p) to preserve expected magnitude
-    3. Apply: W_merged = W_backdoor + alpha * τ_dare
+    3. Apply: W_merged = W_backdoor + (1-alpha) * τ_dare
 
-    alpha=0 → pure backdoor, alpha=1 → full dare-sparsified clean direction.
+    alpha=1 → pure backdoor, alpha=0 → full dare-sparsified clean direction.
     """
     rng = torch.Generator()
     rng.manual_seed(seed)
@@ -328,7 +328,7 @@ def make_merged_unet_state_dare(
             torch.full(tau.shape, 1.0 - p), generator=rng
         ).to(tau.device)
         tau_dare = tau * keep_mask / (1.0 - p)      # rescale
-        merged[kk] = (bd.float() + alpha * tau_dare).to(bd.dtype)
+        merged[kk] = (bd.float() + (1 - alpha) * tau_dare).to(bd.dtype)
 
     return merged
 
