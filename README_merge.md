@@ -187,6 +187,7 @@ W_merged = sin((1-alpha)×θ)/sin(θ) × W_clean
 | `--dataset_load_mode` | `FIXED` | 数据集加载模式：`FIXED` / `FLEX` |
 | `--clean_rate` | `1.0` | 干净样本比例 |
 | `--poison_rate` | `0.1` | 毒化样本比例（影响 output_dir 自动命名） |
+|`num_inference_steps`|`1000`|推理步数，默认1000步|
 
 ---
 

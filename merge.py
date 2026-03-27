@@ -110,6 +110,8 @@ def parse_args():
     parser.add_argument("--fid_num_workers", type=int, default=4)
     parser.add_argument("--skip_fid", action="store_true")
     parser.add_argument("--asr_threshold", type=float, default=0.05)
+    parser.add_argument("--num_inference_steps", type=int, default=1000,
+                        help="Number of denoising steps during sampling. Default 1000.")
 
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--gpu", type=str, default=None)
@@ -485,7 +487,7 @@ def maybe_generate_real_images(dsl: DatasetLoader, out_dir: str, sample_n: int, 
 # ---------------------------------------------------------------------------
 
 def sample_to_dir(pipe, init_noise, out_dir, sample_n, eval_max_batch,
-                  force_resample, stage_name, clip_sample):
+                  force_resample, stage_name, clip_sample, num_inference_steps):
     os.makedirs(out_dir, exist_ok=True)
     if force_resample:
         clear_images(out_dir)
@@ -498,7 +500,7 @@ def sample_to_dir(pipe, init_noise, out_dir, sample_n, eval_max_batch,
     device = next(pipe.unet.parameters()).device
     if hasattr(pipe.scheduler, "config") and clip_sample is not None:
         pipe.scheduler.config.clip_sample = clip_sample
-    pipe.scheduler.set_timesteps(1000)
+    pipe.scheduler.set_timesteps(num_inference_steps)
 
     start = existing_n
     remaining = sample_n - existing_n
@@ -715,12 +717,12 @@ def main():
 
         sample_to_dir(merged_pipe, init_noise, clean_dir, args.sample_n,
                       args.eval_max_batch, args.force_resample,
-                      f"{args.method} a={alpha:.4f} clean", clip_sample)
+                      f"{args.method} a={alpha:.4f} clean", clip_sample, args.num_inference_steps)
         save_grid_preview(clean_dir, os.path.join(alpha_dir, "clean_grid.png"))
 
         sample_to_dir(merged_pipe, backdoor_init_noise, backdoor_dir, args.sample_n,
                       args.eval_max_batch, args.force_resample,
-                      f"{args.method} a={alpha:.4f} backdoor", clip_sample)
+                      f"{args.method} a={alpha:.4f} backdoor", clip_sample, args.num_inference_steps)
         save_grid_preview(backdoor_dir, os.path.join(alpha_dir, "backdoor_grid.png"))
 
         fid_val = None
