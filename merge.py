@@ -43,7 +43,7 @@ def parse_args():
         "--method",
         type=str,
         default="wa",
-        choices=["wa", "task_arithmetic", "ties", "dare", "slerp"],
+        choices=["wa", "task_arithmetic", "ties", "dare", "slerp", "mwm"],
         help=(
             "Merge method:\n"
             "  wa              – weighted average (original behaviour)\n"
@@ -118,6 +118,14 @@ def parse_args():
     parser.add_argument("--fclip", type=str, default="o", choices=["w", "o", "n"])
     parser.add_argument("--force_resample", action="store_true")
 
+    parser.add_argument(
+        "--mwm_T",
+        type=float,
+        default=1.0,
+        help="MWM: temperature parameter controlling suppression strength. "
+            "Larger T -> closer to WA. Default 1.0.",
+    )
+    
     return parser.parse_args()
 
 
@@ -387,6 +395,51 @@ def make_merged_unet_state_slerp(
 
     return merged
 
+def make_merged_unet_state_mwm(
+    backdoor_state: Dict[str, torch.Tensor],
+    clean_state: Dict[str, torch.Tensor],
+    alpha: float,
+    T: float = 1.0,
+) -> Dict[str, torch.Tensor]:
+    """
+    Magnitude-Weighted Merging (MWM).
+
+    Computes a per-parameter weight w_i based on task vector magnitude:
+        w_i = min(2 * (1 - sigmoid((|tau_i| - mu) / (T * sigma))), 1)
+
+    High-magnitude parameters (likely backdoor-critical) receive smaller
+    weights; low-magnitude parameters are left unchanged (w_i = 1).
+    As T -> inf, w_i -> 1 for all i, recovering standard WA.
+
+    Merged model:
+        theta_m = theta_c + alpha * w * tau
+    """
+    float_keys = _float_keys(backdoor_state)
+
+    # ── 1. 拼接所有浮点参数，计算全局 mu 和 sigma ──────────────────────────
+    tau_flat_list = []
+    for k in float_keys:
+        tau_flat_list.append(
+            (backdoor_state[k].float() - clean_state[k].float()).abs().flatten()
+        )
+    tau_abs_flat = torch.cat(tau_flat_list)
+    mu    = tau_abs_flat.mean()
+    sigma = tau_abs_flat.std().clamp(min=1e-8)
+
+    # ── 2. 逐参数计算权重并合并 ────────────────────────────────────────────
+    merged = {}
+    for k in backdoor_state:
+        bd, cl = backdoor_state[k], clean_state[k]
+        if not torch.is_floating_point(bd):
+            merged[k] = bd
+            continue
+        tau_k   = bd.float() - cl.float()
+        tau_abs = tau_k.abs()
+        w = 2.0 * (1.0 - torch.sigmoid((tau_abs - mu) / (T * sigma)))
+        w = w.clamp(max=1.0)                       # clip to [0, 1]
+        merged[k] = (cl.float() + alpha * w * tau_k).to(bd.dtype)
+
+    return merged
 
 # Registry so main() can call the right function
 MERGE_METHODS = {
@@ -395,6 +448,7 @@ MERGE_METHODS = {
     "ties": make_merged_unet_state_ties,
     "dare": make_merged_unet_state_dare,
     "slerp": make_merged_unet_state_slerp,
+    "mwm": make_merged_unet_state_mwm,
 }
 
 
@@ -425,6 +479,8 @@ def dispatch_merge(method: str, backdoor_state, clean_state, alpha, args) -> Dic
         return merged
     elif method == "slerp":
         return make_merged_unet_state_slerp(backdoor_state, clean_state, alpha)
+    elif method == "mwm":
+        return make_merged_unet_state_mwm(backdoor_state, clean_state, alpha, T=args.mwm_T)
     else:
         raise ValueError(f"Unknown method: {method}")
 
