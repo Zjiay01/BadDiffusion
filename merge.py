@@ -51,12 +51,14 @@ def parse_args():
             "  ties            – TIES-Merging (trim + elect-sign + merge)\n"
             "  dare            – DARE (random drop + rescale) then weighted avg\n"
             "  slerp           – spherical linear interpolation\n"
+            "  mwm             – Magnitude-Weighted Merging\n"
             "\n"
             "alpha semantics (backdoor weight, 1 = full backdoor, 0 = full clean):\n"
             "  wa              – W = (1-a)*W_clean + a*W_backdoor\n"
             "  task_arithmetic – W = W_backdoor - a*τ  where τ=W_backdoor-W_clean\n"
             "  ties/dare       – scale applied to merged task-vector\n"
             "  slerp           – interpolation factor (0=clean, 1=backdoor)\n"
+            "  mwm             – magnitude scale applied to merged task-vector\n"
         ),
     )
 
