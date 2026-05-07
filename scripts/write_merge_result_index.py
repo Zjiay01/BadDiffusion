@@ -10,7 +10,7 @@ from pathlib import Path
 def parse_args():
     parser = argparse.ArgumentParser(description="Collect merge baseline result summaries.")
     parser.add_argument("--output", default="merge_result_index", help="Output folder for index files.")
-    parser.add_argument("--patterns", nargs="+", default=["save_s2_*", "final_s2_*"])
+    parser.add_argument("--patterns", nargs="+", default=["save_s1_*", "final_s1_*", "save_s2_*", "final_s2_*"])
     parser.add_argument("--copy", action="store_true", help="Copy result folders into the output folder.")
     return parser.parse_args()
 
@@ -25,9 +25,13 @@ def read_summary(result_dir: Path):
 
 
 def infer_scenario(name: str):
-    if "_hat_" in name:
+    if "_s1_hat_" in name:
+        return "s1_hat"
+    if "_s1_cat_" in name:
+        return "s1_cat"
+    if "_s2_hat_" in name:
         return "s2_hat"
-    if "_cat_" in name:
+    if "_s2_cat_" in name:
         return "s2_cat"
     return "unknown"
 
@@ -83,7 +87,7 @@ def main():
 
     with (out / "README.md").open("w") as f:
         f.write("# Merge Result Index\n\n")
-        f.write("This folder indexes completed S2 merge-defense outputs.\n\n")
+        f.write("This folder indexes completed merge-defense outputs.\n\n")
         f.write("| name | scenario | method | ASR | MSE | SSIM | model save |\n")
         f.write("|---|---|---|---:|---:|---:|---|\n")
         for row in rows:

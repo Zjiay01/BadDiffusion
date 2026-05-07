@@ -99,7 +99,11 @@ def build_jobs(args):
 
 
 def summary_path(job):
-    return Path(job.name) / "merge_summary.json"
+    direct = Path(job.name) / "merge_summary.json"
+    if direct.exists():
+        return direct
+    nested = sorted(Path(job.name).glob("*/merge_summary.json"))
+    return nested[0] if nested else direct
 
 
 def is_done(job):
