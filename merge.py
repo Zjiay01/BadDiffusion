@@ -414,7 +414,7 @@ def make_merged_unet_state_mwm(
     As T -> inf, w_i -> 1 for all i, recovering standard WA.
 
     Merged model:
-        theta_m = theta_c + alpha * w * tau
+        theta_m = theta_b + (1 - alpha) * w * tau
     """
     float_keys = _float_keys(backdoor_state)
 
@@ -422,7 +422,7 @@ def make_merged_unet_state_mwm(
     tau_flat_list = []
     for k in float_keys:
         tau_flat_list.append(
-            (backdoor_state[k].float() - clean_state[k].float()).abs().flatten()
+            (clean_state[k].float() - backdoor_state[k].float()).abs().flatten()
         )
     tau_abs_flat = torch.cat(tau_flat_list)
     mu    = tau_abs_flat.mean()
@@ -435,11 +435,11 @@ def make_merged_unet_state_mwm(
         if not torch.is_floating_point(bd):
             merged[k] = bd
             continue
-        tau_k   = bd.float() - cl.float()
+        tau_k   = cl.float() - bd.float()
         tau_abs = tau_k.abs()
         w = 2.0 * (1.0 - torch.sigmoid((tau_abs - mu) / (T * sigma)))
         w = w.clamp(max=1.0)                       # clip to [0, 1]
-        merged[k] = (cl.float() + alpha * w * tau_k).to(bd.dtype)
+        merged[k] = (bd.float() + (1 - alpha) * w * tau_k).to(bd.dtype)
 
     return merged
 
