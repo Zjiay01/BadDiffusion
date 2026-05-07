@@ -1,20 +1,23 @@
 # Experiment Results
 
-This file summarizes the currently organized BadDiffusion merge-defense baseline results on the lab server. The source of truth is `/home1/zhln/code/BadDiffusion/merge_results/` and `/home1/zhln/code/BadDiffusion/merge_result_index/`.
+This file summarizes the currently organized BadDiffusion merge-defense baseline results on the lab server. The source of truth is `/home1/zhln/code/BadDiffusion/merge_results/`.
 
-## Result Folders
+## Result Folder
 
-- `merge_results/`: compact entry point with `README.md`, `index.json`, and symlinks to result directories.
-- `merge_result_index/`: generated result index files.
-- `final_s1_*`: clean + backdoor final S1 baselines, `sample_n=1024`, `num_inference_steps=200`, `skip_fid=True`, `save_model=True`.
-- `save_s2_*`: S2 saved-model baselines, `sample_n=512`, `num_inference_steps=200`, `skip_fid=True`, `save_model=True`.
-- `final_s2_*_1024`: selected S2 rechecks, `sample_n=1024`, `num_inference_steps=200`, `skip_fid=True`, `save_model=True`.
-- `merge_medium_nodef_*`: no-defense single-backdoor reference runs.
+- `merge_results/`: real result directories plus generated `README.md` and `index.json`. Results are moved here directly, not copied and not symlinked.
+- `merge_results/final_s1_*`: clean + backdoor final S1 baselines, `sample_n=1024`, `num_inference_steps=200`, `skip_fid=True`, `save_model=True`.
+- `merge_results/save_s2_*`: S2 saved-model baselines, `sample_n=512`, `num_inference_steps=200`, `skip_fid=True`, `save_model=True`.
+- `merge_results/final_s2_*_1024`: selected S2 rechecks, `sample_n=1024`, `num_inference_steps=200`, `skip_fid=True`, `save_model=True`.
+- `merge_results/merge_medium_nodef_*`: no-defense single-backdoor reference runs.
+- `merge_results/logs/`: baseline queue logs.
+- `legacy_outputs/`: old pre-baseline outputs moved out of the project root on the server, including prior `result/`, `measure/`, `test/`, and `model_old/`.
 
 ## Indexed Results
 
 | scenario | method | run | ASR | MSE | SSIM | save format |
 |---|---|---|---:|---:|---:|---|
+| nodef | no_defense | `merge_medium_nodef_box11_cat` | 0.613281 | 0.082787 | 0.703389 | N/A |
+| nodef | no_defense | `merge_medium_nodef_box14_hat` | 0.898438 | 0.015880 | 0.873510 | N/A |
 | s1_hat | anp | `final_s1_hat_anp` | 0.000000 | 0.238349 | 0.003236 | diffusers |
 | s1_hat | clean_finetune | `final_s1_hat_clean_finetune` | 0.000000 | 0.240567 | 0.000384 | diffusers |
 | s1_hat | diffusion_soup | `final_s1_hat_diffusion_soup` | 0.000000 | 0.240567 | 0.000384 | diffusers |
@@ -46,15 +49,22 @@ This file summarizes the currently organized BadDiffusion merge-defense baseline
 - FID is not included in these indexed rows because these baseline runs used `--skip_fid`; FID should be launched separately as a longer experiment.
 - The strongest remaining backdoor signal in the current indexed results is `final_s2_hat_maxfusion_1024` / `save_s2_hat_maxfusion`, where ASR remains high.
 
-## Cleanup Performed
+## Cleanup And Organization Performed
 
-Removed temporary or superseded server artifacts:
+Moved formal result directories from the project root into `merge_results/` and removed the old symlink-only layout. Removed the stale root-level `merge_result_index/`; the active index now lives in `merge_results/index.json` and `merge_results/README.md`.
 
-- `wandb/` (run cache, about 1.9GB)
-- `fid_smoke_s2_hat_soup/` (small FID smoke test)
-- `debug_outputs/` (old debug outputs)
-- `defended_models/` (older medium copied outputs superseded by indexed final/save runs)
+Moved older non-current experiment artifacts out of the project root into `legacy_outputs/`:
+
+- `result/`
+- `measure/`
+- `test/`
+- `model_old/`
+
+Earlier cleanup removed temporary or superseded server artifacts:
+- `wandb/` run cache
+- `fid_smoke_s2_hat_soup/`
+- `debug_outputs/`
+- `defended_models/`
 - `__pycache__/`
-- closed the completed `final_s1_queue` tmux session
 
-Preserved formal result folders, no-defense reference runs, result indexes, logs, and original clean/backdoor checkpoints.
+Preserved original clean/backdoor checkpoints and all formal baseline/no-defense result directories under `merge_results/`.

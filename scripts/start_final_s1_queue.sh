@@ -15,4 +15,4 @@ exec bash scripts/wait_and_run_baseline_queue.sh \
   --sample_n 1024 \
   --num_inference_steps 200 \
   --gpus "${GPU_ID:-2}" \
-  --log_dir logs/final_s1_queue
+  --log_dir merge_results/logs/final_s1_queue

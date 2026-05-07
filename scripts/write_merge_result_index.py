@@ -9,14 +9,33 @@ from pathlib import Path
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Collect merge baseline result summaries.")
-    parser.add_argument("--output", default="merge_result_index", help="Output folder for index files.")
-    parser.add_argument("--patterns", nargs="+", default=["save_s1_*", "final_s1_*", "save_s2_*", "final_s2_*"])
+    parser.add_argument("--output", default="merge_results", help="Output folder for index files.")
+    parser.add_argument(
+        "--patterns",
+        nargs="+",
+        default=[
+            "merge_results/save_s1_*",
+            "merge_results/final_s1_*",
+            "merge_results/save_s2_*",
+            "merge_results/final_s2_*",
+            "merge_results/merge_medium_nodef_*",
+            "save_s1_*",
+            "final_s1_*",
+            "save_s2_*",
+            "final_s2_*",
+            "merge_medium_nodef_*",
+        ],
+    )
     parser.add_argument("--copy", action="store_true", help="Copy result folders into the output folder.")
     return parser.parse_args()
 
 
 def read_summary(result_dir: Path):
-    summaries = sorted(result_dir.glob("*/merge_summary.json"))
+    direct = result_dir / "merge_summary.json"
+    if direct.exists():
+        summaries = [direct]
+    else:
+        summaries = sorted(result_dir.glob("*/merge_summary.json"))
     if not summaries:
         return None, None
     with summaries[0].open() as f:
@@ -25,6 +44,8 @@ def read_summary(result_dir: Path):
 
 
 def infer_scenario(name: str):
+    if name.startswith("merge_medium_nodef"):
+        return "nodef"
     if "_s1_hat_" in name:
         return "s1_hat"
     if "_s1_cat_" in name:
@@ -37,6 +58,8 @@ def infer_scenario(name: str):
 
 
 def infer_method(name: str):
+    if name.startswith("merge_medium_nodef"):
+        return "no_defense"
     for method in ["diffusion_soup", "clean_finetune", "maxfusion", "dmm", "anp"]:
         if name.endswith(method) or f"_{method}_" in name:
             return method

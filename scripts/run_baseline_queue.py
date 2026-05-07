@@ -159,7 +159,7 @@ def main():
     if not gpus:
         raise SystemExit("No GPU ids provided.")
 
-    log_dir = Path(args.log_dir or f"logs/{args.prefix}")
+    log_dir = Path(args.log_dir or f"merge_results/logs/{args.prefix}")
     log_dir.mkdir(parents=True, exist_ok=True)
     queue = [job for job in build_jobs(args) if args.force or not is_done(job)]
     running = {}
