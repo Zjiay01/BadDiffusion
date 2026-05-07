@@ -1,4 +1,5 @@
 import copy
+import distutils.version  # Compatibility for torch.utils.tensorboard on this env.
 from types import SimpleNamespace
 from typing import Dict, Iterable, List, Optional
 
@@ -169,7 +170,16 @@ class WeightedScoreUNet(nn.Module):
         self.register_buffer("weights", torch.tensor(weights, dtype=torch.float32), persistent=False)
         self.config = self.unets[0].config
 
+    @property
+    def dtype(self):
+        return next(self.parameters()).dtype
+
+    @property
+    def device(self):
+        return next(self.parameters()).device
+
     def forward(self, sample, timestep, **kwargs):
+        return_dict = kwargs.pop("return_dict", True)
         outs = []
         for unet in self.unets:
             out = unet(sample, timestep, **kwargs)
@@ -178,7 +188,10 @@ class WeightedScoreUNet(nn.Module):
         weights = self.weights.to(device=stacked.device, dtype=stacked.dtype)
         while weights.dim() < stacked.dim():
             weights = weights.view(*weights.shape, *([1] * (stacked.dim() - weights.dim())))
-        return SimpleNamespace(sample=(stacked * weights).sum(dim=0))
+        sample = (stacked * weights).sum(dim=0)
+        if not return_dict:
+            return (sample,)
+        return SimpleNamespace(sample=sample)
 
 
 class VarianceGatedScoreUNet(nn.Module):
@@ -189,17 +202,30 @@ class VarianceGatedScoreUNet(nn.Module):
         self.temperature = max(float(temperature), 1e-6)
         self.config = self.unets[0].config
 
+    @property
+    def dtype(self):
+        return next(self.parameters()).dtype
+
+    @property
+    def device(self):
+        return next(self.parameters()).device
+
     def forward(self, sample, timestep, **kwargs):
+        return_dict = kwargs.pop("return_dict", True)
         outs = []
         for unet in self.unets:
             out = unet(sample, timestep, **kwargs)
             outs.append(out.sample if hasattr(out, "sample") else out[0])
         stacked = torch.stack(outs, dim=0)
-        disagreement = stacked.var(dim=0, unbiased=False).mean(dim=tuple(range(1, stacked.dim())), keepdim=True)
+        disagreement = stacked.var(dim=0, unbiased=False)
+        disagreement = disagreement.mean(dim=tuple(range(1, disagreement.dim())), keepdim=True)
         gate = torch.sigmoid(-disagreement / self.temperature)
         weights = self.weights.to(device=stacked.device, dtype=stacked.dtype)
         while weights.dim() < stacked.dim():
             weights = weights.view(*weights.shape, *([1] * (stacked.dim() - weights.dim())))
         weighted = (stacked * weights).sum(dim=0)
         conservative = stacked[0]
-        return SimpleNamespace(sample=gate * weighted + (1 - gate) * conservative)
+        sample = gate * weighted + (1 - gate) * conservative
+        if not return_dict:
+            return (sample,)
+        return SimpleNamespace(sample=sample)

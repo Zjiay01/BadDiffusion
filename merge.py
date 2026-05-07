@@ -1,4 +1,5 @@
 import argparse
+import distutils.version  # Compatibility for torch.utils.tensorboard on this env.
 import json
 import os
 import sys
@@ -67,6 +68,8 @@ def parse_args():
     parser.add_argument("--gpu", type=str, default=None)
     parser.add_argument("--fclip", type=str, default="o", choices=["w", "o", "n"])
     parser.add_argument("--force_resample", action="store_true")
+    parser.add_argument("--save_model", action="store_true",
+                        help="Save the defended pipeline under each alpha directory.")
 
     parser.add_argument("--dmm_steps", type=int, default=200)
     parser.add_argument("--dmm_lr", type=float, default=1e-5)
@@ -128,6 +131,35 @@ def save_run_args_config(output_dir: str, input_args: Dict, config: Dict):
         json.dump(input_args, f, indent=2)
     with open(os.path.join(output_dir, "config.json"), "w") as f:
         json.dump(config, f, indent=2)
+
+
+def save_defended_model(pipe, model_dir: str, metadata: Dict) -> Dict:
+    os.makedirs(model_dir, exist_ok=True)
+    metadata_path = os.path.join(model_dir, "merge_metadata.json")
+
+    if hasattr(pipe.unet, "save_pretrained"):
+        pipe.to("cpu")
+        pipe.save_pretrained(model_dir)
+        metadata = dict(metadata)
+        metadata.update(save_format="diffusers", loadable_with="DDPMPipeline.from_pretrained")
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f, indent=2)
+        print(f"[INFO] Saved defended model to: {model_dir}")
+        return {"model_dir": model_dir, "model_save_format": "diffusers"}
+
+    metadata = dict(metadata)
+    metadata.update(
+        save_format="ensemble_metadata",
+        loadable_with=None,
+        note=(
+            "This method uses a runtime ensemble UNet wrapper, so it is not a standard "
+            "single-UNet Diffusers checkpoint. Rebuild it from merge_metadata.json."
+        ),
+    )
+    with open(metadata_path, "w") as f:
+        json.dump(metadata, f, indent=2)
+    print(f"[WARN] {metadata['method']} is not a standard Diffusers UNet; saved metadata to: {model_dir}")
+    return {"model_dir": model_dir, "model_save_format": "ensemble_metadata"}
 
 
 def resolve_device(gpu_arg: Optional[str]) -> str:
@@ -249,7 +281,7 @@ def compute_backdoor_metrics(backdoor_dir: str, target: torch.Tensor,
     gen = dataset[:n].to(dev)
 
     reps = [len(gen)] + [1] * len(target.shape)
-    tgt = torch.squeeze((target.repeat(*reps) / 2 + 0.5).clamp(0, 1)).to(dev)
+    tgt = (target.repeat(*reps) / 2 + 0.5).clamp(0, 1).to(dev)
 
     mse = float(nn.MSELoss(reduction="mean")(gen, tgt))
     ssim = float(StructuralSimilarityIndexMeasure(data_range=1.0).to(dev)(gen, tgt))
@@ -419,6 +451,22 @@ def main():
         print("ASR metrics done")
 
         item = dict(alpha=alpha, weights=weights, fid=fid_val, mse=mse_val, ssim=ssim_val, asr=asr_val)
+        if args.save_model:
+            save_info = save_defended_model(
+                pipe=pipe,
+                model_dir=os.path.join(alpha_dir, "merged_model"),
+                metadata=dict(
+                    method=args.method,
+                    alpha=alpha,
+                    weights=weights,
+                    model_ckpts=ckpts,
+                    trigger=args.trigger,
+                    target=args.target,
+                    dataset=args.dataset,
+                    output_dir=output_dir,
+                ),
+            )
+            item.update(save_info)
         results.append(item)
         print(
             f"[RESULT] alpha={alpha:.4f} | weights={weights} | FID={fid_val} | "
