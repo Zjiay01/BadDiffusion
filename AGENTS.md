@@ -218,3 +218,14 @@ If the user asks to publish docs to GitHub, use the GitHub app if local HTTPS cr
 - The user prefers concrete commands and direct experimental runbooks.
 - When giving server commands, prefer one-line commands if they need to copy/paste them.
 - Explain experimental tradeoffs in Chinese and keep the structure clear.
+
+## Long Experiment Automation Habit
+
+For long-running lab-server experiments, make this the default workflow:
+
+- Run long jobs inside `tmux` sessions on the lab server instead of blocking the local conversation.
+- Use queue scripts when possible so GPU jobs are serialized or parallelized intentionally.
+- Set a Codex heartbeat/automation to check progress periodically, usually every 30 minutes.
+- On each check, inspect `tmux`, `merge.py` processes, GPU usage, logs, and newly written `merge_summary.json` files.
+- If jobs finish, refresh result indexes such as `merge_result_index/` and `merge_results/`.
+- Pause and ask the user before destructive cleanup, large directory moves, launching longer FID/full-step experiments, starting new attack training, or occupying many GPUs beyond the agreed limit.
