@@ -229,3 +229,7 @@ For long-running lab-server experiments, make this the default workflow:
 - On each check, inspect `tmux`, `merge.py` processes, GPU usage, logs, and newly written `merge_summary.json` files.
 - If jobs finish, refresh result indexes such as `merge_result_index/` and `merge_results/`.
 - Pause and ask the user before destructive cleanup, large directory moves, launching longer FID/full-step experiments, starting new attack training, or occupying many GPUs beyond the agreed limit.
+
+## File Organization Habit
+
+When organizing experiment outputs, prefer moving the real result directories into the target organization folder. Do not copy result directories or replace them with symlinks unless the user explicitly asks for that. If existing scripts depend on the old paths, update the scripts/indexes after moving, or clearly note the path-compatibility risk before running more experiments.
