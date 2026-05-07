@@ -1,5 +1,6 @@
 import copy
 import distutils.version  # Compatibility for torch.utils.tensorboard on this env.
+import os
 from types import SimpleNamespace
 from typing import Dict, Iterable, List, Optional
 
@@ -54,7 +55,8 @@ def load_pipelines(ckpts: List[str], torch_dtype=None) -> List[DDPMPipeline]:
     kwargs = {}
     if torch_dtype is not None:
         kwargs["torch_dtype"] = torch_dtype
-    return [DDPMPipeline.from_pretrained(ckpt, **kwargs) for ckpt in ckpts]
+    resolved = [os.path.abspath(ckpt) for ckpt in ckpts]
+    return [DDPMPipeline.from_pretrained(ckpt, **kwargs) for ckpt in resolved]
 
 
 def weighted_state_dict(states: List[Dict[str, torch.Tensor]], weights: List[float]) -> Dict[str, torch.Tensor]:
