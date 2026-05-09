@@ -2,6 +2,54 @@
 
 This repository is being used for experiments on merge-time defenses for backdoored diffusion models. The user works in Chinese; answer in Chinese unless they ask otherwise.
 
+## Current Snapshot For New Sessions
+
+Read this section first. It is the compact current state of the project.
+
+- Local workspace: `D:\Safe Merge\BadDiffusion`.
+- Lab server project: `/home1/zhln/code/BadDiffusion`.
+- Lab server Python: `/home1/zhln/envs/baddiffusion/bin/python`.
+- SSH from local workspace: `ssh -i '.codex_ssh\baddiffusion_server_ed25519' -o UserKnownHostsFile=ssh_known_hosts zhln@192.168.121.242`.
+- For GPU jobs, set `CUDA_VISIBLE_DEVICES=<gpu>` outside the Python command. Do not rely on `merge.py --gpu` for isolation because CUDA visibility can be affected by import timing.
+- Current source of truth for merge-defense code: `merge.py` and `merge_methods/`.
+- Current task tracker: `EXPERIMENT_TASKS.md`.
+- Current result summary: `EXPERIMENT_RESULTS.md`.
+- Server result root: `/home1/zhln/code/BadDiffusion/merge_results/`.
+- `merge_results/` now contains real result directories, not symlinks and not copied duplicates. Keep using direct moves for future organization.
+- Old pre-current outputs were moved to `/home1/zhln/code/BadDiffusion/legacy_outputs/`.
+- The root-level `merge_result_index/` was removed. The active generated index is `merge_results/index.json` and `merge_results/README.md`.
+- Check the latest pushed code state with `git log -1 --oneline`; this file is kept in GitHub with the project.
+
+Current checkpoints on the server:
+
+```text
+/home1/zhln/code/BadDiffusion/res_DDPM-CIFAR10-32_CIFAR10_ep50_c1.0_p0.0_BOX_14-HAT_clean
+/home1/zhln/code/BadDiffusion/res_DDPM-CIFAR10-32_CIFAR10_ep50_c1.0_p0.1_BOX_14-HAT_bd_box14_hat
+/home1/zhln/code/BadDiffusion/res_DDPM-CIFAR10-32_CIFAR10_ep50_c1.0_p0.1_BOX_11-CAT_bd_box11_cat
+```
+
+Completed current baseline results:
+
+- No-defense references are complete:
+  - `BOX_14 -> HAT`: ASR `0.898438`
+  - `BOX_11 -> CAT`: ASR `0.613281`
+- S1 `clean + backdoor` baseline is complete for both `BOX_14-HAT` and `BOX_11-CAT`.
+- S2 `backdoor + backdoor` baseline is complete for `BOX_14-HAT + BOX_11-CAT`, evaluated under both triggers.
+- `merge_results/` currently indexes 26 entries: 24 baseline/selected recheck runs plus 2 no-defense runs.
+- Important observation: most baselines suppress current ASR to `0`, but `s2_hat + maxfusion` preserves the backdoor strongly:
+  - `save_s2_hat_maxfusion`: ASR `0.902344`
+  - `final_s2_hat_maxfusion_1024`: ASR `0.891602`
+- FID has not been fully run for the indexed baseline table. Only a small FID smoke test was done to verify the code path.
+
+Immediate next useful work:
+
+- Back up or periodically pull `merge_results/index.json` and `merge_results/README.md`.
+- Decide final FID settings and run FID for no-defense, S1 baseline, and S2 baseline.
+- Generate qualitative sample grids for clean, backdoor, and defended outputs.
+- Investigate why `MaxFusion` preserves `BOX_14 -> HAT` in S2 but not `BOX_11 -> CAT`.
+- Add another attack method next, preferably VillanDiffusion on CIFAR10/DDPM in diffusers-compatible format.
+- Start designing the new general merge defense after the baseline/FID table is stable.
+
 ## Current Research Goal
 
 The project is being refocused from general model-merging baselines to diffusion-model-specific merge defenses.
@@ -52,7 +100,7 @@ Old methods such as TIES, DARE, and SLERP are no longer the main baselines for t
 
 ## First Experiment Stage
 
-The user has not yet run backdoor attacks. Start from attack/checkpoint preparation before merge baselines.
+The first BadDiffusion attack/checkpoint preparation stage is complete. The notes below describe the original first-stage setup and remain useful for interpreting the existing results.
 
 First-stage dataset:
 
@@ -78,7 +126,7 @@ Clean model options:
 - Use pretrained `DDPM-CIFAR10-32` directly, or
 - Train/save a clean checkpoint with `poison_rate=0.0`.
 
-Before running merge defense, verify that each single backdoor model has meaningful backdoor behavior.
+Single-backdoor no-defense references have been run and show meaningful ASR. See `EXPERIMENT_RESULTS.md`.
 
 ## First Merge Scenarios
 
@@ -153,20 +201,20 @@ Compatibility check for any new attack checkpoint:
 - Trigger/target/evaluation protocol must be recorded.
 - Single-model ASR must be high enough before merge-defense experiments.
 
-## Server Information From User
+## Server Information
 
-The user provided this lab server information:
+Lab server information:
 
 ```text
 ssh zhln@192.168.121.242
-project path: /home1/zhln/code
+project path: /home1/zhln/code/BadDiffusion
 conda env: /home1/zhln/envs/baddiffusion
 ```
 
-SSH network connectivity was reachable from the local environment, but login failed because the current Codex environment did not have a valid SSH credential:
+Use the workspace SSH key from `D:\Safe Merge`:
 
 ```text
-Permission denied (publickey,password)
+ssh -i '.codex_ssh\baddiffusion_server_ed25519' -o UserKnownHostsFile=ssh_known_hosts zhln@192.168.121.242
 ```
 
 Observed server host fingerprints:
@@ -176,42 +224,25 @@ ED25519 SHA256:DGBXYqcCWHaBPvnO+hzVHpOyTmfZMPiPotkmNOLTbJw
 RSA     SHA256:kE3dMOZXsg5WQZauzj46InJzptanQxn4B+ofezLJSbs
 ```
 
-Recommended safe access approach:
-
-1. Generate a temporary SSH key in this workspace.
-2. Give the public key to the user.
-3. User adds it to `/home1/zhln/.ssh/authorized_keys` on the server.
-4. Remove that authorized key after the experiment session.
-
 Do not ask the user to paste their private SSH key into chat.
 
 ## GitHub State
 
-Local HTTPS `git push` previously failed on Windows with:
+Local Git push works in the current Windows workspace. Use normal `git add`, `git commit`, `git push` as needed. If sandbox blocks `.git/index.lock`, request elevated shell permission for the Git command.
 
-```text
-SEC_E_NO_CREDENTIALS
-```
+## Current Docs
 
-The merge-method code was still pushed to GitHub through the GitHub app as commit:
-
-```text
-48e98cff298b6cb7e0e66129ba3f94e079c1f501
-```
-
-Local repo may have a different local commit with equivalent content and may appear ahead/diverged until synced.
-
-## Current Docs Added Locally
-
-These files were added locally after the merge-method commit:
+Important project docs:
 
 ```text
 EXPERIMENT_PLAN.md
 BASELINE_RUN_COMMANDS.md
 AGENTS.md
+EXPERIMENT_RESULTS.md
+EXPERIMENT_TASKS.md
 ```
 
-If the user asks to publish docs to GitHub, use the GitHub app if local HTTPS credentials are still unavailable.
+Keep `EXPERIMENT_TASKS.md` updated by checking off completed work. Keep `EXPERIMENT_RESULTS.md` aligned with the latest server `merge_results/index.json`.
 
 ## Style Notes
 
@@ -227,7 +258,7 @@ For long-running lab-server experiments, make this the default workflow:
 - Use queue scripts when possible so GPU jobs are serialized or parallelized intentionally.
 - Set a Codex heartbeat/automation to check progress periodically, usually every 30 minutes.
 - On each check, inspect `tmux`, `merge.py` processes, GPU usage, logs, and newly written `merge_summary.json` files.
-- If jobs finish, refresh result indexes such as `merge_result_index/` and `merge_results/`.
+- If jobs finish, refresh result indexes under `merge_results/`, especially `merge_results/index.json` and `merge_results/README.md`.
 - Pause and ask the user before destructive cleanup, large directory moves, launching longer FID/full-step experiments, starting new attack training, or occupying many GPUs beyond the agreed limit.
 
 ## File Organization Habit
