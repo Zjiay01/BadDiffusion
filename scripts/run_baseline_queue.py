@@ -62,6 +62,8 @@ def parse_args():
     parser.add_argument("--methods", default=",".join(DEFAULT_METHODS))
     parser.add_argument("--sample_n", type=int, default=1024)
     parser.add_argument("--eval_max_batch", type=int, default=64)
+    parser.add_argument("--fid_batch_size", type=int, default=64)
+    parser.add_argument("--fid_num_workers", type=int, default=4)
     parser.add_argument("--num_inference_steps", type=int, default=200)
     parser.add_argument("--alphas", default="0.5")
     parser.add_argument("--model_weights", default="0.5,0.5")
@@ -141,6 +143,10 @@ def command_for(job, args):
         str(args.sample_n),
         "--eval_max_batch",
         str(args.eval_max_batch),
+        "--fid_batch_size",
+        str(args.fid_batch_size),
+        "--fid_num_workers",
+        str(args.fid_num_workers),
         "--num_inference_steps",
         str(args.num_inference_steps),
     ]
