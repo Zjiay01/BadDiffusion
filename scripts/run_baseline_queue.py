@@ -108,6 +108,10 @@ def summary_path(job):
     return nested[0] if nested else direct
 
 
+def log_name(job):
+    return job.name.replace("\\", "_").replace("/", "_") + ".log"
+
+
 def is_done(job):
     path = summary_path(job)
     if not path.exists():
@@ -181,7 +185,7 @@ def main():
             if gpu in running or not queue:
                 continue
             job = queue.pop(0)
-            log_path = log_dir / f"{job.name}.log"
+            log_path = log_dir / log_name(job)
             log_fh = log_path.open("w")
             env = os.environ.copy()
             env["CUDA_VISIBLE_DEVICES"] = gpu
