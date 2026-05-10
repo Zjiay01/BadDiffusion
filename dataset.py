@@ -82,7 +82,10 @@ class DatasetLoader(object):
         if name == DatasetLoader.MNIST:
             return load_dataset("mnist", split=split_method)
         elif name == DatasetLoader.CIFAR10:
-            return load_dataset("cifar10", split=split_method)
+            try:
+                return load_dataset("cifar10", split=split_method)
+            except Exception as exc:
+                return self.__load_torchvision_cifar10(exc)
         elif name == DatasetLoader.CELEBA:
             return load_dataset("student/celebA", split='train')
         elif name == DatasetLoader.CELEBA_HQ:
@@ -90,6 +93,32 @@ class DatasetLoader(object):
             return load_dataset("datasets/celeba_hq_256", split='train')
         else:
             raise NotImplementedError(f"Undefined dataset: {name}")
+
+    def __load_torchvision_cifar10(self, load_exc: Exception):
+        roots = [
+            os.environ.get("CIFAR10_TORCHVISION_ROOT"),
+            self.__root,
+            os.path.join(os.getcwd(), "data"),
+            "/home1/zhln/datasets/torchvision",
+        ]
+        tried = []
+        for root in roots:
+            if not root:
+                continue
+            root = os.path.expanduser(root)
+            if root in tried:
+                continue
+            tried.append(root)
+            try:
+                train_ds = CIFAR10(root=root, train=True, download=False)
+                test_ds = CIFAR10(root=root, train=False, download=False)
+            except Exception:
+                continue
+            imgs = [Image.fromarray(img) for img in train_ds.data] + [Image.fromarray(img) for img in test_ds.data]
+            labels = list(train_ds.targets) + list(test_ds.targets)
+            Log.warning(f"Falling back to local torchvision CIFAR10 at: {root}")
+            return datasets.Dataset.from_dict({"img": imgs, DatasetLoader.LABEL: labels})
+        raise load_exc
             
     def __set_img_shape(self, image_size: int) -> None:
         # Set channel

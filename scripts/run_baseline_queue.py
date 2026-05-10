@@ -68,6 +68,9 @@ def parse_args():
     parser.add_argument("--alphas", default="0.5")
     parser.add_argument("--model_weights", default="0.5,0.5")
     parser.add_argument("--dataset", default="CIFAR10")
+    parser.add_argument("--clean_ckpt", default=DEFAULT_CKPTS["clean"])
+    parser.add_argument("--bd_box14_hat_ckpt", default=DEFAULT_CKPTS["bd_box14_hat"])
+    parser.add_argument("--bd_box11_cat_ckpt", default=DEFAULT_CKPTS["bd_box11_cat"])
     parser.add_argument("--log_dir", default=None)
     parser.add_argument("--skip_fid", dest="skip_fid", action="store_true", default=True)
     parser.add_argument("--no_skip_fid", dest="skip_fid", action="store_false")
@@ -82,11 +85,16 @@ def parse_args():
 
 def build_jobs(args):
     jobs = []
+    ckpts_by_name = {
+        "clean": args.clean_ckpt,
+        "bd_box14_hat": args.bd_box14_hat_ckpt,
+        "bd_box11_cat": args.bd_box11_cat_ckpt,
+    }
     for scenario_name in parse_csv(args.scenarios):
         if scenario_name not in DEFAULT_SCENARIOS:
             raise ValueError(f"Unknown scenario: {scenario_name}")
         scenario = DEFAULT_SCENARIOS[scenario_name]
-        ckpts = ",".join(DEFAULT_CKPTS[key] for key in scenario["ckpts"])
+        ckpts = ",".join(ckpts_by_name[key] for key in scenario["ckpts"])
         for method in parse_csv(args.methods):
             jobs.append(
                 Job(

@@ -21,6 +21,7 @@ def parse_args():
             "merge_results/merge_medium_nodef_*",
             "merge_results/fid1000_*",
             "merge_results/celeba_hq_*",
+            "merge_results/badmerge_*",
             "save_s1_*",
             "final_s1_*",
             "save_s2_*",
@@ -28,6 +29,7 @@ def parse_args():
             "merge_medium_nodef_*",
             "fid1000_*",
             "celeba_hq_*",
+            "badmerge_*",
         ],
     )
     parser.add_argument("--copy", action="store_true", help="Copy result folders into the output folder.")
@@ -56,6 +58,8 @@ def infer_scenario(name: str):
         return "celeba_hq_nodef"
     if name.startswith("celeba_hq_s1"):
         return "celeba_hq_s1"
+    if name.startswith("badmerge_"):
+        return "badmerge_" + infer_scenario(name[len("badmerge_"):])
     if "_s1_hat_" in name:
         return "s1_hat"
     if "_s1_cat_" in name:
