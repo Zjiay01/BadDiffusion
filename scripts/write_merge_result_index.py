@@ -19,11 +19,15 @@ def parse_args():
             "merge_results/save_s2_*",
             "merge_results/final_s2_*",
             "merge_results/merge_medium_nodef_*",
+            "merge_results/fid1000_*",
+            "merge_results/celeba_hq_*",
             "save_s1_*",
             "final_s1_*",
             "save_s2_*",
             "final_s2_*",
             "merge_medium_nodef_*",
+            "fid1000_*",
+            "celeba_hq_*",
         ],
     )
     parser.add_argument("--copy", action="store_true", help="Copy result folders into the output folder.")
@@ -46,6 +50,12 @@ def read_summary(result_dir: Path):
 def infer_scenario(name: str):
     if name.startswith("merge_medium_nodef"):
         return "nodef"
+    if name.startswith("fid1000_nodef"):
+        return "nodef_fid1000"
+    if name.startswith("celeba_hq_nodef"):
+        return "celeba_hq_nodef"
+    if name.startswith("celeba_hq_s1"):
+        return "celeba_hq_s1"
     if "_s1_hat_" in name:
         return "s1_hat"
     if "_s1_cat_" in name:
@@ -58,7 +68,7 @@ def infer_scenario(name: str):
 
 
 def infer_method(name: str):
-    if name.startswith("merge_medium_nodef"):
+    if name.startswith("merge_medium_nodef") or name.startswith("fid1000_nodef") or name.startswith("celeba_hq_nodef"):
         return "no_defense"
     for method in ["diffusion_soup", "clean_finetune", "maxfusion", "dmm", "anp"]:
         if name.endswith(method) or f"_{method}_" in name:
@@ -111,11 +121,13 @@ def main():
     with (out / "README.md").open("w") as f:
         f.write("# Merge Result Index\n\n")
         f.write("This folder indexes completed merge-defense outputs.\n\n")
-        f.write("| name | scenario | method | ASR | MSE | SSIM | model save |\n")
-        f.write("|---|---|---|---:|---:|---:|---|\n")
+        f.write("| name | scenario | method | FID | ASR | MSE | SSIM | model save |\n")
+        f.write("|---|---|---|---:|---:|---:|---:|---|\n")
         for row in rows:
+            fid = "" if row["fid"] is None else f"{row['fid']:.6f}"
             f.write(
                 f"| {row['name']} | {row['scenario']} | {row['method']} | "
+                f"{fid} | "
                 f"{row['asr']:.6f} | {row['mse']:.6f} | {row['ssim']:.6f} | "
                 f"{row['model_save_format']} |\n"
             )
