@@ -53,10 +53,16 @@ def parse_args():
     parser.add_argument("--clean_rate", type=float, default=1.0)
     parser.add_argument("--poison_rate", type=float, default=0.1)
     parser.add_argument("--merge_alpha", type=float, default=0.5, help="Weight on adaptive model in virtual soup.")
-    parser.add_argument("--direct_weight", type=float, default=0.5)
-    parser.add_argument("--merged_weight", type=float, default=1.0)
-    parser.add_argument("--anchor_weight", type=float, default=0.02, help="L2 penalty to keep attack weights near init.")
+    parser.add_argument("--clean_weight", type=float, default=1.0,
+                        help="Clean denoising loss weight on non-triggered samples.")
+    parser.add_argument("--direct_weight", type=float, default=0.5,
+                        help="Standalone backdoor loss weight on triggered samples.")
+    parser.add_argument("--merged_weight", type=float, default=5.0,
+                        help="Virtual-merged backdoor loss weight on triggered samples.")
+    parser.add_argument("--anchor_weight", type=float, default=0.005, help="L2 penalty to keep attack weights near init.")
     parser.add_argument("--batch_size", type=int, default=64)
+    parser.add_argument("--bd_batch_size", type=int, default=64,
+                        help="Triggered samples constructed per clean batch, matching BadMerging-style training.")
     parser.add_argument("--max_steps", type=int, default=5000)
     parser.add_argument("--lr", type=float, default=2e-5)
     parser.add_argument("--seed", type=int, default=0)
@@ -191,6 +197,42 @@ def anchor_l2(attack_unet, init_params):
     return loss / max(count, 1)
 
 
+def zero_loss_like(param: torch.Tensor):
+    return param.sum() * 0.0
+
+
+def build_backdoor_tensors(args, device):
+    if args.dataset != DatasetLoader.CIFAR10:
+        raise ValueError("BadMerging adaptive training currently builds paired backdoor batches for CIFAR10 only")
+    backdoor = Backdoor(root=args.dataset_path)
+    trigger = backdoor.get_trigger(
+        type=args.trigger,
+        channel=3,
+        image_size=32,
+        vmin=DEFAULT_VMIN,
+        vmax=DEFAULT_VMAX,
+    ).to(device)
+    target = backdoor.get_target(
+        type=args.target,
+        trigger=trigger.detach().cpu(),
+        vmin=DEFAULT_VMIN,
+        vmax=DEFAULT_VMAX,
+    ).to(device)
+    mask = torch.where(trigger > DEFAULT_VMIN, 0, 1).to(device)
+    return trigger, target, mask
+
+
+def make_triggered_batch(images, trigger, target, mask, batch_size: int):
+    bd_n = min(int(batch_size), len(images))
+    if bd_n <= 0:
+        return None, None
+    source = images[:bd_n]
+    repeat_shape = (bd_n,) + (1,) * len(source.shape[1:])
+    residual = mask.repeat(*repeat_shape) * source + (1 - mask.repeat(*repeat_shape)) * trigger.repeat(*repeat_shape)
+    targets = target.repeat(*repeat_shape)
+    return targets, residual
+
+
 def save_pipeline(pipe, attack_unet, output_dir: Path, name: str, args, step: int):
     save_dir = output_dir / name
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -257,6 +299,7 @@ def main():
     clean_params = {k: v.detach().clone().to(device) for k, v in clean_unet.named_parameters()}
     clean_buffers = {k: v.detach().clone().to(device) for k, v in clean_unet.named_buffers()}
     init_params = {k: v.detach().clone().to(device) for k, v in attack_unet.named_parameters()}
+    trigger, target_pattern, backdoor_mask = build_backdoor_tensors(args, device)
 
     loader = build_loader(args)
     optim = torch.optim.AdamW(attack_unet.parameters(), lr=args.lr)
@@ -266,30 +309,68 @@ def main():
     pbar = tqdm(total=args.max_steps, desc="BadMerging adaptive train", unit="step")
     while step < args.max_steps:
         for batch in loader:
-            target_images = batch[DatasetLoader.TARGET].to(device)
-            residual = batch[DatasetLoader.PIXEL_VALUES].to(device)
-            noise = torch.randn_like(target_images)
+            images = batch[DatasetLoader.IMAGE].to(device)
+            clean_residual = torch.zeros_like(images)
+            bd_targets, bd_residual = make_triggered_batch(
+                images=images,
+                trigger=trigger,
+                target=target_pattern,
+                mask=backdoor_mask,
+                batch_size=args.bd_batch_size,
+            )
+            clean_noise = torch.randn_like(images)
             timesteps = torch.randint(
                 0,
                 noise_sched.config.num_train_timesteps,
-                (len(target_images),),
+                (len(images),),
                 device=device,
             ).long()
 
-            direct = diffusion_loss(noise_sched, attack_unet, target_images, residual, timesteps, noise)
-            merged = merged_functional_loss(
+            clean = diffusion_loss(
                 noise_sched,
                 attack_unet,
-                clean_params,
-                clean_buffers,
-                target_images,
-                residual,
+                images,
+                clean_residual,
                 timesteps,
-                noise,
-                args.merge_alpha,
+                clean_noise,
             )
+            direct = zero_loss_like(images)
+            merged = zero_loss_like(images)
+
+            if bd_targets is not None:
+                bd_noise = torch.randn_like(bd_targets)
+                bd_timesteps = torch.randint(
+                    0,
+                    noise_sched.config.num_train_timesteps,
+                    (len(bd_targets),),
+                    device=device,
+                ).long()
+                direct = diffusion_loss(
+                    noise_sched,
+                    attack_unet,
+                    bd_targets,
+                    bd_residual,
+                    bd_timesteps,
+                    bd_noise,
+                )
+                merged = merged_functional_loss(
+                    noise_sched,
+                    attack_unet,
+                    clean_params,
+                    clean_buffers,
+                    bd_targets,
+                    bd_residual,
+                    bd_timesteps,
+                    bd_noise,
+                    args.merge_alpha,
+                )
             anchor = anchor_l2(attack_unet, init_params)
-            loss = args.direct_weight * direct + args.merged_weight * merged + args.anchor_weight * anchor
+            loss = (
+                args.clean_weight * clean
+                + args.direct_weight * direct
+                + args.merged_weight * merged
+                + args.anchor_weight * anchor
+            )
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(attack_unet.parameters(), 1.0)
@@ -300,13 +381,16 @@ def main():
             record = {
                 "step": step,
                 "loss": float(loss.detach().cpu()),
-                "direct_loss": float(direct.detach().cpu()),
-                "merged_loss": float(merged.detach().cpu()),
+                "clean_loss": float(clean.detach().cpu()),
+                "direct_backdoor_loss": float(direct.detach().cpu()),
+                "merged_backdoor_loss": float(merged.detach().cpu()),
                 "anchor_loss": float(anchor.detach().cpu()),
+                "clean_n": int(len(images)),
+                "poison_n": int(0 if bd_targets is None else len(bd_targets)),
             }
             with metrics_path.open("a") as f:
                 f.write(json.dumps(record) + "\n")
-            pbar.set_postfix(loss=f"{record['loss']:.4f}", merged=f"{record['merged_loss']:.4f}")
+            pbar.set_postfix(loss=f"{record['loss']:.4f}", merged=f"{record['merged_backdoor_loss']:.4f}")
             pbar.update(1)
 
             if step % args.save_every == 0:

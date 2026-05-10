@@ -91,6 +91,29 @@ These runs use `sample_n=256`, `num_inference_steps=1000`, FID enabled, and eval
 | celeba_hq_s1 | dmm | `celeba_hq_s1_glasses_cat_dmm` | 142.754 | 0.000000 | 0.384921 | 0.000575 |
 | celeba_hq_s1 | maxfusion | `celeba_hq_s1_glasses_cat_maxfusion` | 60.092 | 0.000000 | 0.384921 | 0.000575 |
 
+CelebA-HQ currently only has no-defense and S1 (`clean + backdoor`) results. S2 (`backdoor + backdoor`) has not been run for CelebA-HQ yet. BadMerging is treated as an adaptive attack method rather than a third scenario.
+
+## BadMerging-Style Adaptive Diffusion Attack
+
+The BadMerging-style diffusion adaptive attack trains an attacker checkpoint against a virtual `alpha=0.5` clean/backdoor merge. The current successful checkpoint is:
+
+```text
+/home1/zhln/code/BadDiffusion/merge_results/badmerge_cifar10_box14_hat_paired_strong2000/final
+```
+
+Fast evaluation results below use CIFAR10, `BOX_14 -> HAT`, `alpha=0.5`, `num_inference_steps=100`, and `skip_fid=True`.
+
+| run | method | sample_n | ASR | MSE | SSIM |
+|---|---|---:|---:|---:|---:|
+| `badmerge_confirm_strong2000_n512` | diffusion_soup | 512 | 0.912109 | 0.016635 | 0.826002 |
+| `badmerge_defense_strong2000_n256_diffusion_soup` | diffusion_soup | 256 | 0.890625 | 0.018481 | 0.816156 |
+| `badmerge_defense_strong2000_n256_dmm` | dmm | 256 | 0.554688 | 0.075567 | 0.553345 |
+| `badmerge_defense_strong2000_n256_maxfusion` | maxfusion | 256 | 0.000000 | 0.240567 | 0.000384 |
+| `badmerge_defense_strong2000_n256_anp` | anp | 256 | 0.000000 | 0.239837 | 0.001121 |
+| `badmerge_defense_strong2000_n256_clean_finetune` | clean_finetune | 256 | 0.000000 | 0.226789 | 0.006832 |
+
+Observation: the adaptive attack transfers through uniform weight averaging, while MaxFusion, ANP, and Clean Fine-Tuning suppress ASR in the current quick setting. DMM partially reduces ASR. FID-enabled `sample_n=1024`, `num_inference_steps=1000` runs are in progress under `merge_results/badmerge_fid1000_*`.
+
 ## Cleanup And Organization Performed
 
 Moved formal result directories from the project root into `merge_results/` and removed the old symlink-only layout. Removed the stale root-level `merge_result_index/`; the active index now lives in `merge_results/index.json` and `merge_results/README.md`.

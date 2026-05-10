@@ -82,7 +82,12 @@
 - [ ] 将 VillanDiffusion 加入 S1：`clean + VillanDiffusion backdoor`。
 - [ ] 将 VillanDiffusion 加入 S2：`BadDiffusion backdoor + VillanDiffusion backdoor`。
 - [ ] 调研并决定 TrojDiff 的接入方式：转换 checkpoint、重训，或单独实验组。
-- [ ] 设计 BadMerging-style diffusion adaptive attack，作为攻击者知道会 merge 的自适应威胁模型。
+- [x] 设计并跑通 BadMerging-style diffusion adaptive attack，作为攻击者知道会 merge 的自适应威胁模型。
+  - 当前成功 checkpoint：服务器 `merge_results/badmerge_cifar10_box14_hat_paired_strong2000/final`。
+  - 快速确认：`badmerge_confirm_strong2000_n512` 在 `alpha=0.5` 下 ASR `0.912109`。
+  - 快速 baseline：`diffusion_soup` ASR `0.890625`，`dmm` ASR `0.554688`，`maxfusion/anp/clean_finetune` ASR `0.0`。
+- [ ] 对 BadMerging-style adaptive attack 补跑 FID-enabled 正式评估。
+  - 当前进行中：服务器 `merge_results/badmerge_fid1000_*`，`sample_n=1024`，`num_inference_steps=1000`，FID enabled。
 - [ ] 设计 BadBlocks-style DDPM 或单独 Stable Diffusion 实验组。
 
 ## 7. 我们自己的 Merge 防御方法
@@ -101,6 +106,7 @@
 - [ ] 固定最终表格结构：攻击方法、场景、合并方法、防御方法、ASR、FID、MSE、SSIM、runtime。
 - [ ] 固定最终图结构：ASR-FID tradeoff、qualitative samples、方法流程图、ablation。
 - [ ] 补充更多数据集或更大模型实验：CelebA-HQ 或 Stable Diffusion / LDM。
+- [ ] 补跑 CelebA-HQ S2。当前 CelebA-HQ 只完成 no-defense 与 S1；S2 (`backdoor + backdoor`) 尚未运行。
 - [ ] 总结 baseline 观察：多数 WA/repair/pruning baseline 可以压低当前 ASR，但 MaxFusion 在 S2/HAT 上保留后门。
 - [ ] 写实验设置：dataset、model architecture、attack config、merge config、evaluation config。
 - [ ] 写实验结果分析：为什么现有 baseline 不是通用防御，为什么新方法能覆盖 S1/S2/adaptive。

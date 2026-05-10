@@ -26,6 +26,7 @@ Current checkpoints on the server:
 /home1/zhln/code/BadDiffusion/res_DDPM-CIFAR10-32_CIFAR10_ep50_c1.0_p0.0_BOX_14-HAT_clean
 /home1/zhln/code/BadDiffusion/res_DDPM-CIFAR10-32_CIFAR10_ep50_c1.0_p0.1_BOX_14-HAT_bd_box14_hat
 /home1/zhln/code/BadDiffusion/res_DDPM-CIFAR10-32_CIFAR10_ep50_c1.0_p0.1_BOX_11-CAT_bd_box11_cat
+/home1/zhln/code/BadDiffusion/merge_results/badmerge_cifar10_box14_hat_paired_strong2000/final
 ```
 
 Completed current baseline results:
@@ -39,12 +40,19 @@ Completed current baseline results:
 - Important observation: most baselines suppress current ASR to `0`, but `s2_hat + maxfusion` preserves the backdoor strongly:
   - `save_s2_hat_maxfusion`: ASR `0.902344`
   - `final_s2_hat_maxfusion_1024`: ASR `0.891602`
-- FID has not been fully run for the indexed baseline table. Only a small FID smoke test was done to verify the code path.
+- FID-enabled CIFAR10 baseline results for BadDiffusion S1/S2 are recorded in `EXPERIMENT_RESULTS.md`.
+- CelebA-HQ currently has only no-defense and S1 (`clean + backdoor`) results. CelebA-HQ S2 has not been run.
+- BadMerging-style diffusion adaptive attack is implemented and has a successful CIFAR10 checkpoint:
+  - `merge_results/badmerge_cifar10_box14_hat_paired_strong2000/final`
+  - quick `alpha=0.5`, `sample_n=512`, `skip_fid=True` confirmation ASR: `0.912109`
+  - quick defense baselines: diffusion_soup ASR `0.890625`, DMM ASR `0.554688`, MaxFusion/ANP/Clean Fine-Tuning ASR `0.0`
+  - FID-enabled `sample_n=1024`, `num_inference_steps=1000` runs are under `merge_results/badmerge_fid1000_*` when active.
 
 Immediate next useful work:
 
 - Back up or periodically pull `merge_results/index.json` and `merge_results/README.md`.
-- Decide final FID settings and run FID for no-defense, S1 baseline, and S2 baseline.
+- Finish/aggregate BadMerging FID-enabled baseline runs if `merge_results/badmerge_fid1000_*` is active.
+- Decide whether to run CelebA-HQ S2 first as a smoke test or full FID run.
 - Generate qualitative sample grids for clean, backdoor, and defended outputs.
 - Investigate why `MaxFusion` preserves `BOX_14 -> HAT` in S2 but not `BOX_11 -> CAT`.
 - Add another attack method next, preferably VillanDiffusion on CIFAR10/DDPM in diffusers-compatible format.
