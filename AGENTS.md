@@ -46,12 +46,12 @@ Completed current baseline results:
   - `merge_results/badmerge_cifar10_box14_hat_paired_strong2000/final`
   - quick `alpha=0.5`, `sample_n=512`, `skip_fid=True` confirmation ASR: `0.912109`
   - quick defense baselines: diffusion_soup ASR `0.890625`, DMM ASR `0.554688`, MaxFusion/ANP/Clean Fine-Tuning ASR `0.0`
-  - FID-enabled `sample_n=1024`, `num_inference_steps=1000` runs are under `merge_results/badmerge_fid1000_*` when active.
+  - FID-enabled `sample_n=1024`, `num_inference_steps=1000` results are under `merge_results/badmerge_fid1000_*`: diffusion_soup ASR `1.000000`, DMM ASR `0.995117`, MaxFusion ASR `0.0`, ANP ASR `0.0`, Clean Fine-Tuning ASR `0.001953`.
 
 Immediate next useful work:
 
 - Back up or periodically pull `merge_results/index.json` and `merge_results/README.md`.
-- Finish/aggregate BadMerging FID-enabled baseline runs if `merge_results/badmerge_fid1000_*` is active.
+- Use `EXPERIMENT_RESULTS.md` for the latest BadMerging FID-enabled baseline table.
 - Decide whether to run CelebA-HQ S2 first as a smoke test or full FID run.
 - Generate qualitative sample grids for clean, backdoor, and defended outputs.
 - Investigate why `MaxFusion` preserves `BOX_14 -> HAT` in S2 but not `BOX_11 -> CAT`.

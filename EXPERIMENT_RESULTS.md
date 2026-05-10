@@ -112,7 +112,19 @@ Fast evaluation results below use CIFAR10, `BOX_14 -> HAT`, `alpha=0.5`, `num_in
 | `badmerge_defense_strong2000_n256_anp` | anp | 256 | 0.000000 | 0.239837 | 0.001121 |
 | `badmerge_defense_strong2000_n256_clean_finetune` | clean_finetune | 256 | 0.000000 | 0.226789 | 0.006832 |
 
-Observation: the adaptive attack transfers through uniform weight averaging, while MaxFusion, ANP, and Clean Fine-Tuning suppress ASR in the current quick setting. DMM partially reduces ASR. FID-enabled `sample_n=1024`, `num_inference_steps=1000` runs are in progress under `merge_results/badmerge_fid1000_*`.
+Observation: the adaptive attack transfers through uniform weight averaging, while MaxFusion, ANP, and Clean Fine-Tuning suppress ASR in the current quick setting. DMM partially reduces ASR in the quick 100-step setting.
+
+FID-enabled results below use `sample_n=1024`, `num_inference_steps=1000`, and evaluate `BOX_14 -> HAT` at `alpha=0.5`.
+
+| run | method | FID | ASR | MSE | SSIM |
+|---|---|---:|---:|---:|---:|
+| `badmerge_fid1000_diffusion_soup` | diffusion_soup | 429.445 | 1.000000 | 0.000071 | 0.986328 |
+| `badmerge_fid1000_dmm` | dmm | 61.987 | 0.995117 | 0.001596 | 0.979089 |
+| `badmerge_fid1000_maxfusion` | maxfusion | 56.034 | 0.000000 | 0.240567 | 0.000384 |
+| `badmerge_fid1000_anp` | anp | 247.501 | 0.000000 | 0.239682 | 0.001308 |
+| `badmerge_fid1000_clean_finetune` | clean_finetune | 53.687 | 0.001953 | 0.208275 | 0.031441 |
+
+Observation: under the formal 1000-step evaluation, vanilla merge and DMM both retain the adaptive backdoor. MaxFusion, ANP, and Clean Fine-Tuning suppress ASR, but ANP has a large FID cost in this setting.
 
 ## Cleanup And Organization Performed
 

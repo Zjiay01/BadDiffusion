@@ -86,8 +86,9 @@
   - 当前成功 checkpoint：服务器 `merge_results/badmerge_cifar10_box14_hat_paired_strong2000/final`。
   - 快速确认：`badmerge_confirm_strong2000_n512` 在 `alpha=0.5` 下 ASR `0.912109`。
   - 快速 baseline：`diffusion_soup` ASR `0.890625`，`dmm` ASR `0.554688`，`maxfusion/anp/clean_finetune` ASR `0.0`。
-- [ ] 对 BadMerging-style adaptive attack 补跑 FID-enabled 正式评估。
-  - 当前进行中：服务器 `merge_results/badmerge_fid1000_*`，`sample_n=1024`，`num_inference_steps=1000`，FID enabled。
+- [x] 对 BadMerging-style adaptive attack 补跑 FID-enabled 正式评估。
+  - 服务器结果：`merge_results/badmerge_fid1000_*`，`sample_n=1024`，`num_inference_steps=1000`，FID enabled。
+  - 正式结果：`diffusion_soup` ASR `1.000000`，`dmm` ASR `0.995117`，`maxfusion` ASR `0.0`，`anp` ASR `0.0`，`clean_finetune` ASR `0.001953`。
 - [ ] 设计 BadBlocks-style DDPM 或单独 Stable Diffusion 实验组。
 
 ## 7. 我们自己的 Merge 防御方法
